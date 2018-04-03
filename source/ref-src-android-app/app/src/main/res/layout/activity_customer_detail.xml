@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <android.support.v7.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        android:theme="@style/ThemeOverlay.AppCompat.ActionBar"
+        app:elevation="4dp"
+        app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
+
+    <RelativeLayout
+        android:id="@+id/customerLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:padding="20dp"
+        android:visibility="gone"
+        tools:visibility="visible"
+        android:layout_below="@+id/toolbar">
+
+        <TextView
+            android:id="@+id/id_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ID : "
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/id"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_toRightOf="@+id/id_text"
+            android:textSize="16sp"
+            tools:text="ENG-0984712" />
+
+        <TextView
+            android:id="@+id/first_name_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@+id/first_name"
+            android:layout_alignTop="@+id/first_name"
+            android:gravity="center"
+            android:text="First Name : "
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/first_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/id_text"
+            android:layout_toRightOf="@+id/first_name_text"
+            android:textSize="16sp"
+            tools:text="John" />
+
+        <TextView
+            android:id="@+id/last_name_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@+id/last_name"
+            android:layout_alignTop="@+id/last_name"
+            android:gravity="center"
+            android:text="Last Name : "
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/last_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/first_name_text"
+            android:layout_toRightOf="@+id/last_name_text"
+            android:textSize="16sp"
+            tools:text="Jackson" />
+
+        <TextView
+            android:id="@+id/account_number_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@+id/account_number"
+            android:layout_alignTop="@+id/account_number"
+            android:gravity="center"
+            android:text="Account Number : "
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/account_number"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/last_name_text"
+            android:layout_toRightOf="@+id/account_number_text"
+            android:textSize="16sp"
+            tools:text="AAA123" />
+
+        <TextView
+            android:id="@+id/channel_group_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@+id/channel_group"
+            android:layout_alignTop="@+id/channel_group"
+            android:gravity="center"
+            android:text="Channel Group : "
+            android:textSize="16sp" />
+
+        <Spinner
+            android:id="@+id/channel_group"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/account_number_text"
+            android:layout_toRightOf="@+id/channel_group_text"
+            android:textSize="16sp"
+            tools:text="Asia" />
+
+        <TextView
+            android:id="@+id/channel_list_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@+id/channel_list"
+            android:layout_alignTop="@+id/channel_list"
+            android:gravity="center"
+            android:text="Channel List : "
+            android:textSize="16sp" />
+
+        <Spinner
+            android:id="@+id/channel_list"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/channel_group_text"
+            android:layout_marginTop="10dp"
+            android:layout_toRightOf="@+id/channel_list_text"
+            android:textSize="16sp"
+            tools:text="Extended" />
+
+
+        <TextView
+            android:id="@+id/subscription_status_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/channel_list_text"
+            android:layout_marginTop="10dp"
+            android:text="Subscription Status : "
+            android:textSize="16sp" />
+
+        <RadioGroup
+            android:id="@+id/subscription_status"
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/channel_list_text"
+            android:layout_toRightOf="@+id/subscription_status_text"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/subscription_status_active"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Active"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/subscription_status_inactive"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="InActive"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/subscription_status_terminated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Terminated"
+                android:textSize="16sp" />
+        </RadioGroup>
+
+        <Button
+            android:id="@+id/edit_data"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/subscription_status"
+            android:text="Submit"
+            android:textSize="16sp" />
+
+    </RelativeLayout>
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true" />
+
+
+</RelativeLayout>

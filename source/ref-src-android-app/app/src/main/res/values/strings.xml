@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">POC Project</string>
+
+    <string name="update_success">Update success</string>
+
+    <string-array name="channel_group_array">
+        <item>Global</item>
+        <item>EMEA</item>
+        <item>Asia</item>
+        <item>Local</item>
+    </string-array>
+
+    <string-array name="channel_list_array">
+        <item>Standart</item>
+        <item>Extended</item>
+    </string-array>
+</resources>

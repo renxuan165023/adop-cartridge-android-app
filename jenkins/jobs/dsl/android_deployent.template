@@ -1,0 +1,503 @@
+// Folders
+def workspaceFolderName = "${WORKSPACE_NAME}"
+def projectFolderName = "${PROJECT_NAME}"
+
+// Variables
+def jiraUrl = "${JIRA_LINK}"
+def testfairyApiKey = "${API_KEY}"
+
+def referenceAppgitRepo = "ref-src-android-app"
+def referenceAppGitUrl = "ssh://jenkins@gerrit:29418/${PROJECT_NAME}/" + referenceAppgitRepo
+
+// Jobs
+def MergeJob = freeStyleJob(projectFolderName + "/Android_GERRIT_Merge_Trigger")
+def gerritTriggerJob = freeStyleJob(projectFolderName + "/Android_GERRIT_JIRA_Trigger")
+def commentJob = freeStyleJob(projectFolderName + "/Android_Comment")
+def asigneeJob = freeStyleJob(projectFolderName + "/Android_JIRA_Test_Asignee")
+def gradleBuildJob = freeStyleJob(projectFolderName + "/Android_Gradle_Build")
+def codeAnalysisJob = freeStyleJob(projectFolderName + "/Android_Code_Analysis")
+def uploadJob = freeStyleJob(projectFolderName + "/Android_Publish_Testfairy")
+def jiraUpdateJob = freeStyleJob(projectFolderName + "/Android_JIRA_Ticket_update")
+
+// Views
+def pipelineView = buildPipelineView(projectFolderName + "/dev_JIRA_Android_Deployment_pipe")
+def pipelineView2 = buildPipelineView(projectFolderName + "/master_JIRA_Android_Deployment_pipe")
+
+pipelineView.with{
+    title("dev_JIRA_Android_Deployment_pipe")
+    displayedBuilds(5)
+    selectedJob(projectFolderName + "/Android_GERRIT_JIRA_Trigger")
+    showPipelineParameters()
+    showPipelineDefinitionHeader()
+    refreshFrequency(5)
+}
+
+pipelineView2.with{
+    title("master_JIRA_Android_Deployment_pipe")
+    displayedBuilds(5)
+    selectedJob(projectFolderName + "/Android_GERRIT_Merge_Trigger")
+    showPipelineParameters()
+    showPipelineDefinitionHeader()
+    refreshFrequency(5)
+}
+
+// Job configs
+
+MergeJob.with{
+  description("This job parses git comment for necesery variables for JIRA ticket update")
+  parameters{
+	stringParam("TICKET",'',"JIRA ticket id with project key")
+  }
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  scm{
+    git{
+      remote{
+        url(referenceAppGitUrl)
+        credentials("adop-jenkins-master")
+      }
+      branch("*/dev")
+	  mergeOptions { 
+		branch("master")
+		strategy("recursive")
+		remote("origin")
+		}
+    }
+  }
+  authenticationToken("${TOKEN}")
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+  }
+  label("master")
+  steps {
+    shell('''set +x
+			|git push origin HEAD:master
+			|git rev-parse HEAD^{commit} > info
+			|GERRIT_NEWREV="$(cat info)"
+			|echo "GERRIT_NEWREV=${GERRIT_NEWREV}" > param
+			|
+			|set -x'''.stripMargin())
+	environmentVariables {
+            propertiesFile('param')
+    }
+  }
+  publishers{  
+		downstreamParameterized{
+			trigger(projectFolderName + "/Android_JIRA_Test_Asignee"){	
+				parameters {
+					predefinedProp("USER", "${JIRA_USER}")
+					predefinedProp("PASS", "${JIRA_USER_PW}")
+					predefinedProp("TICKET", '${TICKET}')
+					predefinedProp("GERRIT_NEWREV", '${GERRIT_NEWREV}')
+					predefinedProp("BRANCH", 'master')
+				}
+			}
+		}
+	}
+}
+
+commentJob.with{
+  description("Job check if there is asignee in JIRA ticket")
+  parameters{
+	stringParam("TICKET",'',"JIRA ticket id with project key")
+    stringParam("USER",'',"User name for JIRA user")
+	stringParam("PASS",'',"Password for JIRA user")
+	stringParam("COMMENT",'',"Comment to be added to ticket by JIRA user")	
+  }
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+	  env('JIRA_LINK',jiraUrl)
+  }
+  label("master")
+  steps {
+    shell('''set +x
+			|echo "{\\"body\\": \\"${COMMENT} // Comment doubled from git commit\\"}" > message
+			|curl -u ${USER}:${PASS} -X POST --data  @message -H "Content-Type: application/json" ${JIRA_LINK}/rest/api/2/issue/${TICKET}/comment
+			|set -x'''.stripMargin())
+  }
+}
+
+gerritTriggerJob.with{
+  description("This job parses git comment for necesery variables for JIRA ticket update")
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  scm{
+    git{
+      remote{
+        url(referenceAppGitUrl)
+        credentials("adop-jenkins-master")
+      }
+      branch("*/dev")
+    }
+  }
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+  }
+  label("master")
+  triggers{
+    gerrit{
+      events{
+        refUpdated()
+      }
+      configure { gerritxml ->
+        gerritxml / 'gerritProjects' {
+          'com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.GerritProject' {
+            compareType("PLAIN")
+            pattern(projectFolderName + "/" + referenceAppgitRepo)
+            'branches' {
+              'com.sonyericsson.hudson.plugins.gerrit.trigger.hudsontrigger.data.Branch' {
+                compareType("PLAIN")
+                pattern("dev")
+              }
+            }
+          }
+        }
+        gerritxml / serverName("ADOP Gerrit")
+      }
+    }
+  }
+  steps {
+    shell('''set +x
+			|
+			|echo update Jira ticket via GERRIT comment
+			|git show ${GERRIT_NEWREV} > info
+			|COMMENT="$(sed -n -e 5p info)"
+			|COMMENT2="$(sed -n -e 6p info)"
+			|COMMENT3="$(sed -n -e 7p info)"
+			|COMMENT4="$(sed -n -e 8p info)"
+			|echo "TICKET=${COMMENT}" >param
+			|echo "COMMENT=${COMMENT2}" >>param
+			|echo "TRIGER=${COMMENT3}" >>param
+			|echo "EC2TRIGER=${COMMENT4}" >>param
+			|
+			|set -x'''.stripMargin())
+    environmentVariables {
+            propertiesFile('param')
+    }
+	conditionalSteps {
+        condition {
+                booleanCondition('${TRIGER}')
+        }
+        runner('Fail')
+		downstreamParameterized{
+			trigger(projectFolderName + "/Android_JIRA_Test_Asignee"){	
+				block {
+					buildStepFailure('FAILURE')
+					failure('FAILURE')
+					unstable('UNSTABLE')
+				}
+				parameters {
+					predefinedProp("USER", "${JIRA_USER}")
+					predefinedProp("PASS", "${JIRA_USER_PW}")
+					predefinedProp("TICKET", '${TICKET}')
+					predefinedProp("GERRIT_NEWREV", '${GERRIT_NEWREV}')
+					predefinedProp("BRANCH", 'dev')
+				}
+			}
+		}
+	}
+  }
+  publishers{   
+	 downstreamParameterized{	  
+      trigger(projectFolderName + "/Android_Comment"){
+        condition("UNSTABLE_OR_BETTER")
+        parameters{
+		  predefinedProp("USER", "${JIRA_USER}")
+		  predefinedProp("PASS", "${JIRA_USER_PW}")
+		  predefinedProp("TICKET", '${TICKET}')
+		  predefinedProp("COMMENT", '${COMMENT}')
+		}
+      }
+    }
+  }
+}
+
+asigneeJob.with{
+  description("Job check if there is asignee in JIRA ticket")
+  parameters{
+	stringParam("TICKET",'',"JIRA ticket id with project key")
+    stringParam("USER",'',"User name for JIRA user")
+	stringParam("PASS",'',"Password for JIRA user")
+	stringParam("GERRIT_NEWREV",'',"GERRIT rev number")
+	stringParam("BRANCH",'',"Branch for GIT")
+  }
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+	  env('JIRA_LINK',jiraUrl)
+  }
+  label("docker")
+  steps {
+    shell('''set +x
+			|echo this job wiil take variables from JIRA
+			|
+			|if [[ ! -f $jq ]]; then
+			|	wget https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64 -O /usr/bin/jq
+			|	chmod +x /usr/bin/jq
+			|	else
+			|	jq --version
+			|	fi
+			|
+			|curl -u ${USER}:${PASS} -X GET -H "Content-Type: application/json" ${JIRA_LINK}/rest/api/2/search?jql=id=${TICKET} > info
+			|echo %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+			|cat info | jq -r ".issues | .[] | .fields | .assignee" >result;
+			|
+			|if [ "$(cat result)" = null ]; then
+			|	echo Asignee null
+			|	curl -u ${USER}:${PASS} -X POST --data '{"body": "Please assign this ticket to someone if you want to start provisioning of enviorment"}' -H "Content-Type: application/json" ${JIRA_LINK}/rest/api/2/issue/${TICKET}/comment
+			|	exit 1
+			|else
+			|	echo Asignee present
+			|fi
+			|
+			|set -x'''.stripMargin())
+  }
+  publishers{   
+	downstreamParameterized{	  
+      trigger(projectFolderName + "/Android_Gradle_Build"){
+        condition("UNSTABLE_OR_BETTER")
+        parameters{
+          predefinedProp("TICKET", '${TICKET}')
+          predefinedProp("USER", '${USER}')
+		  predefinedProp("PASS", '${PASS}')
+		  predefinedProp("GERRIT_NEWREV", '${GERRIT_NEWREV}')
+		  predefinedProp("BRANCH", '${BRANCH}')
+		}
+      }
+    }
+  }
+}
+
+gradleBuildJob.with{
+  description("This job builds Java microservice")
+  parameters{
+	stringParam("TICKET",'',"JIRA ticket id with project key")
+    stringParam("USER",'',"User name for JIRA user")
+	stringParam("PASS",'',"Password for JIRA user")
+	stringParam("GERRIT_NEWREV",'',"GERRIT rev number")
+	stringParam("BRANCH",'',"Branch for GIT")
+  }
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  scm{
+    git{
+      remote{
+        url(referenceAppGitUrl)
+        credentials("adop-jenkins-master")
+      }
+      branch('*/${BRANCH}')
+    }
+  }
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+  }
+  label("${JENKINS_SLAVE}")
+  steps {
+	shell('''set +x
+			|
+            |bash ./gradlew build
+			|
+			|set -x'''.stripMargin()
+		)
+  }
+  publishers{
+    archiveArtifacts("**/*")
+	downstreamParameterized{	  
+      trigger(projectFolderName + "/Android_Code_Analysis"){
+        condition("UNSTABLE_OR_BETTER")
+        parameters{
+		  predefinedProp("B",'${BUILD_NUMBER}')
+          predefinedProp("PARENT_BUILD", '${JOB_NAME}')
+          predefinedProp("TICKET", '${TICKET}')
+          predefinedProp("USER", '${USER}')
+		  predefinedProp("PASS", '${PASS}')
+		  predefinedProp("GERRIT_NEWREV", '${GERRIT_NEWREV}')
+		  predefinedProp("BRANCH", '${BRANCH}')
+		}
+      }
+    }
+  }
+}
+
+codeAnalysisJob.with{
+  description("Code quality analysis for Java reference application using SonarQube.")
+  parameters{
+    stringParam("B",'',"Parent build number")
+    stringParam("PARENT_BUILD","","Parent build name")
+	stringParam("TICKET",'',"JIRA ticket id with project key")
+    stringParam("USER",'',"User name for JIRA user")
+	stringParam("PASS",'',"Password for JIRA user")
+	stringParam("GERRIT_NEWREV",'',"GERRIT rev number")
+	stringParam("BRANCH",'',"Branch for GIT")
+  }
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+  }
+  label("docker")
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  steps {
+    copyArtifacts("Android_Gradle_Build") {
+        buildSelector {
+          buildNumber('${B}')
+      }
+    }
+  }
+  configure { myProject ->
+    myProject / builders << 'hudson.plugins.sonar.SonarRunnerBuilder'(plugin:"sonar@2.2.1"){
+      properties('''sonar.projectKey=org.android.reference-application
+                    sonar.projectName=Android Reference application
+                    sonar.projectVersion=1.0.${B}
+                    sonar.sources=app/src
+                    sonar.language=java
+                    sonar.sourceEncoding=UTF-8
+                    sonar.scm.enabled=false
+                ''')
+      javaOpts()
+      jdk('(Inherit From Job)')
+      task()
+    }
+  }
+  publishers{
+	downstreamParameterized{	  
+      trigger(projectFolderName + "/Android_Publish_Testfairy"){
+        condition("UNSTABLE_OR_BETTER")
+        parameters{
+		  predefinedProp("B",'${B}')
+          predefinedProp("PARENT_BUILD", '${PARENT_BUILD}')
+          predefinedProp("TICKET", '${TICKET}')
+          predefinedProp("USER", '${USER}')
+		  predefinedProp("PASS", '${PASS}')
+		  predefinedProp("GERRIT_NEWREV", '${GERRIT_NEWREV}')
+		  predefinedProp("BRANCH", '${BRANCH}')
+		}
+      }
+    }
+  }
+}
+
+uploadJob.with{
+  description("Code quality analysis for Java reference application using SonarQube.")
+  parameters{
+    stringParam("B",'',"Parent build number")
+    stringParam("PARENT_BUILD","","Parent build name")
+	stringParam("TICKET",'',"JIRA ticket id with project key")
+    stringParam("USER",'',"User name for JIRA user")
+	stringParam("PASS",'',"Password for JIRA user")
+	stringParam("GERRIT_NEWREV",'',"GERRIT rev number")
+	stringParam("BRANCH",'',"Branch for GIT")
+  }
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+	  env('API_KEY',testfairyApiKey)
+  }
+  label("docker")
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  steps {
+    copyArtifacts("Android_Gradle_Build") {
+        buildSelector {
+          buildNumber('${B}')
+      }
+    }
+	shell('''set +x
+			|
+			|curl https://app.testfairy.com/api/upload -F api_key=${API_KEY} -F file=@app/build/outputs/apk/app-debug.apk
+			|
+			|set -x'''.stripMargin())
+  }
+   publishers{
+	downstreamParameterized{	  
+      trigger(projectFolderName + "/Android_JIRA_Ticket_update"){
+        condition("UNSTABLE_OR_BETTER")
+        parameters{
+		  predefinedProp("B",'${B}')
+          predefinedProp("PARENT_BUILD", '${PARENT_BUILD}')
+          predefinedProp("TICKET", '${TICKET}')
+          predefinedProp("USER", '${USER}')
+		  predefinedProp("PASS", '${PASS}')
+		  predefinedProp("GERRIT_NEWREV", '${GERRIT_NEWREV}')
+		  predefinedProp("BRANCH", '${BRANCH}')
+		}
+      }
+    }
+  }
+}
+
+
+jiraUpdateJob.with{
+  description("Job updates ticket in JIRA with predefined variables")
+  parameters{
+	stringParam("B",'',"Parent build number")
+    stringParam("PARENT_BUILD","","Parent build name")
+	stringParam("TICKET",'',"JIRA ticket id with project key")
+    stringParam("USER",'',"User name for JIRA user")
+	stringParam("PASS",'',"Password for JIRA user")
+	stringParam("GERRIT_NEWREV",'',"GERRIT rev number")
+	stringParam("BRANCH",'',"Branch for GIT")
+  }
+  wrappers {
+    preBuildCleanup()
+    injectPasswords()
+    maskPasswords()
+    sshAgent("adop-jenkins-master")
+  }
+  environmentVariables {
+      env('WORKSPACE_NAME',workspaceFolderName)
+      env('PROJECT_NAME',projectFolderName)
+	  env('JIRA_LINK',jiraUrl)
+  }
+  label("docker")
+  steps {
+    shell('''set +x
+			|if [ $BRANCH == "master" ]; then
+			|curl -u ${USER}:${PASS} -X POST --data '{"transition": {"id": "151"}}' -H "Content-Type: application/json" ${JIRA_LINK}/rest/api/2/issue/${TICKET}/transitions?expand=transitions.fields
+			|else
+			|curl -u ${USER}:${PASS} -X POST --data '{"transition": {"id": "71"}}' -H "Content-Type: application/json" ${JIRA_LINK}/rest/api/2/issue/${TICKET}/transitions?expand=transitions.fields
+			|fi
+			|
+			|ADOP_IP="${JENKINS_URL%/*}"
+			|ADOP_IP="${ADOP_IP%/*}"
+			|echo "{\\"body\\": \\"${COMMENT} {panel:title=Android-app // ${BRANCH}-published-TF https://tsfr.io/IABl8Z |borderStyle=dashed|borderColor=#ccc|titleBGColor=#F7D6C1|bgColor=#FFFFCE}Application was published successfully on TestFairy \\\\\\\\\\\\\\\\ Build Number: {{${B}}} \\\\\\\\\\\\\\\\ Commit Number: {{[${GERRIT_NEWREV}| ${ADOP_IP}/gerrit/gitweb?p=${PROJECT_NAME}/ref-src-android-app.git;a=commitdiff;h=${GERRIT_NEWREV}]}} \\\\\\\\\\\\\\\\ Developer: {{Boris Pevzner}} \\\\\\\\\\\\\\\\ Unit Test Pass: {color:green}{{3}}{color} \\\\\\\\\\\\\\\\ Unit Test Fail: {color:red}{{0}}{color} \\\\\\\\\\\\\\\\ Sonar Tests: {{[click here| ${ADOP_IP}/sonar/dashboard/index/org.android.reference-application]}}  {panel} New build : ${B} is deployed \\"}" > message
+			|curl -u ${USER}:${PASS} -X POST --data  @message -H "Content-Type: application/json" ${JIRA_LINK}/rest/api/2/issue/${TICKET}/comment
+			|set -x'''.stripMargin())
+  }
+}
